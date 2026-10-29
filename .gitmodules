@@ -6,7 +6,7 @@
 	url = https://github.com/5577755/tl-test-new.git
 [submodule "Matrix-tests"]
 	path = Matrix-tests
-	url = https://github.com/Ivyfeather/Matrix-tests
+	url = https://github.com/5577755/Matrix-tests.git
 [submodule "linux-kernel/nemu_board"]
 	path = linux-kernel/nemu_board
 	url = https://github.com/OpenXiangShan/nemu_board.git

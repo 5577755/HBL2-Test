@@ -1,0 +1,12 @@
+Vendored from https://github.com/eembc/coremark.git
+Upstream commit: 1f483d5b8316753a742cbf5590caf5bd0a4e4777 (2025-05-01)
+
+Local modifications (see git history of this repository):
+- coremark.h: added an include guard (upstream ships none; required to
+  compile the benchmark as a single translation unit)
+- core_portme.h / core_portme.c: Linux-userspace port for the trace
+  pipeline (MEM_STATIC, SEED_VOLATILE, ITERATIONS=300, rdcycle timers,
+  nemu_signal trace window + termination)
+
+The upstream directory tree (posix/, barebones/, docs/, ... and the
+non-ported .c files) is kept for reference.

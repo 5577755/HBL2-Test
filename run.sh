@@ -5,6 +5,8 @@ TESTS=${BASE}/Matrix-tests
 LINUX=${BASE}/linux-kernel
 NEMU=${BASE}/NEMU-Matrix
 TLTEST=${BASE}/tl-test-new-matrix
+ROOTFS=${LINUX}/riscv-rootfs
+NEMU_BOARD=${LINUX}/nemu_board
 
 CFG_INI=${BASE}/configuration.ini
 CFG_GEN=${BASE}/scripts/gen_testtop_ini_params.py
@@ -74,29 +76,74 @@ done
 if [ $M -eq 1 ] || [ $N -eq 1 ] || [ $L -eq 1 ] || [ $R -eq 1 ] || [ $T -eq 1 ] || [ $C -eq 1 ] || [ $S -eq 1 ]; then
     echo "********** generate configuration artifacts **********"
     python3 ${CFG_GEN} --ini ${CFG_INI} --out-scala ${CFG_SCALA_OUT} --out-matrix-header ${CFG_MATRIX_HEADER_OUT} --out-tltest-ini ${CFG_TLTEST_INI_OUT}
+    sed -i -E "s#^[[:space:]]*trace.file.path[[:space:]]*=.*#trace.file.path             = ${TLTEST}/line_trace.txt#" ${CFG_TLTEST_INI_OUT}
 fi
 
 if [ $M -eq 1 ]; then
     echo "********** build matrix workload **********"
+    # MATRIX_WORKLOAD overrides which isa/ source is baked into the initramfs
+    # (the rcS entry name matrix.out stays fixed).
+    matrix_src=${MATRIX_WORKLOAD:-./isa/xiangshan_mul_full.c}
     cd ${TESTS}
-    ./compiler.sh ./isa/xiangshan_mul_full.c
+    ./compiler.sh ${matrix_src}
+    matrix_workload=${TESTS}/out/$(basename ${matrix_src} .c).out
+    matrix_rootfs_entry=${ROOTFS}/rootfsimg/matrix.out
+    if [ "$(readlink -f ${matrix_workload})" != "$(readlink -f ${matrix_rootfs_entry} 2>/dev/null || true)" ]; then
+        cp -f ${matrix_workload} ${matrix_rootfs_entry}
+    else
+        echo "matrix.out already points to the current workload"
+    fi
     cd ${BASE}
 
-    # make -C ${LINUX}/linux-6.10.3 clean -j${THREADS_BUILD}
-    # make -C ${LINUX}/linux-6.10.3 xiangshan_defconfig -j${THREADS_BUILD}
+    echo "********** build rootfs applications **********"
+    if [ ! -f ${ROOTFS}/apps/busybox/repo/.config ]; then
+        cp ${ROOTFS}/apps/busybox/config ${ROOTFS}/apps/busybox/repo/.config
+    fi
+    make -C ${ROOTFS} CROSS_COMPILE=${CROSS_COMPILE} -j${THREADS_BUILD}
+
+    echo "********** build XiangShan device tree **********"
+    cd ${NEMU_BOARD}/dts
+    ./build_single_core_for_nemu.sh
+    cd ${BASE}
+
+    if [ ! -f ${LINUX}/linux-6.10.3/arch/riscv/configs/xiangshan_defconfig ]; then
+        cp ${NEMU_BOARD}/configs/xiangshan_defconfig \
+            ${LINUX}/linux-6.10.3/arch/riscv/configs/xiangshan_defconfig
+    fi
+
+    if [ ! -f ${LINUX}/linux-6.10.3/.config ]; then
+        echo "********** configure linux kernel **********"
+        make -C ${LINUX}/linux-6.10.3 \
+            ARCH=riscv CROSS_COMPILE=${CROSS_COMPILE} \
+            xiangshan_defconfig
+    fi
 
     echo "********** build linux kernel **********"
-    rm ${LINUX}/linux-6.10.3/vmlinux.o
-    make -C ${LINUX}/linux-6.10.3 -j${THREADS_BUILD}
+    rm -f ${LINUX}/linux-6.10.3/vmlinux.o
+    make -C ${LINUX}/linux-6.10.3 \
+        ARCH=riscv CROSS_COMPILE=${CROSS_COMPILE} \
+        -j${THREADS_BUILD}
 
     echo "********** build opensbi **********"
-    make -C ${LINUX}/opensbi PLATFORM=generic FW_PAYLOAD_PATH=$RISCV_LINUX_HOME/arch/riscv/boot/Image FW_FDT_PATH=$WORKLOAD_BUILD_ENV_HOME/dts/build/xiangshan.dtb FW_PAYLOAD_OFFSET=0x200000 -j${THREADS_BUILD}
+    make -C ${LINUX}/opensbi \
+        CROSS_COMPILE=${CROSS_COMPILE} \
+        PLATFORM=generic \
+        FW_PAYLOAD_PATH=$RISCV_LINUX_HOME/arch/riscv/boot/Image \
+        FW_FDT_PATH=$WORKLOAD_BUILD_ENV_HOME/dts/build/xiangshan.dtb \
+        FW_PAYLOAD_OFFSET=0x200000 \
+        -j${THREADS_BUILD}
 fi
 
 if [ $N -eq 1 ]; then
     echo "********** build NEMU **********"
-    # make -C ${NEMU} riscv64-matrix-xs_defconfig
-    make -C ${NEMU} -j${THREADS_BUILD}
+    if [ ! -f ${NEMU}/.config ]; then
+        make -C ${NEMU} \
+            riscv64-matrix-xs_defconfig \
+            CPT_CROSS_COMPILE=/nfs/home/share/riscv-v/bin/riscv64-unknown-linux-gnu-
+    fi
+    make -C ${NEMU} \
+        CPT_CROSS_COMPILE=/nfs/home/share/riscv-v/bin/riscv64-unknown-linux-gnu- \
+        -j${THREADS_BUILD}
 fi
 
 if [ $T -eq 1 ]; then
@@ -165,4 +212,3 @@ if [ $A -eq 1 ]; then
     echo "********** analyze latest run **********"
     python3 ${BASE}/scripts/analyze_run.py ${TLTEST}/run
 fi
-

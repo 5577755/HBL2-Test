@@ -8,3 +8,4 @@ perf.log
 llvm-project-matrix-0.3
 llm_sim_single_chip
 .cache
+out/

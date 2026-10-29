@@ -5,6 +5,7 @@ export RISCV_ROOTFS_HOME=${LINUX}/riscv-rootfs
 export WORKLOAD_BUILD_ENV_HOME=${LINUX}/nemu_board
 export OPENSBI_HOME=${LINUX}/opensbi
 export RISCV=/nfs/home/share/riscv                   # TODO: consider use llvm-stc with M-ext?
+export PATH=$RISCV/bin:$PATH
 
 export ARCH=riscv
 export CROSS_COMPILE=$RISCV/bin/riscv64-unknown-linux-gnu-
